@@ -1,11 +1,11 @@
 # Stream 🎙️
 
-**Stream** is a high-performance, headless voice dictation tool designed for speed and accuracy. It acts as a "Ghost" typist, recording your voice, transcribing it with **Groq's Whisper**, refining it with **Llama 3** (for perfect grammar and formatting), and typing the text directly into your active application.
+**Stream** is a high-performance, headless voice dictation tool designed for speed and accuracy. It acts as a "Ghost" typist, recording your voice, transcribing it with **Groq's Whisper**, refining it with **GPT OSS 120B** (for perfect grammar and formatting), and typing the text directly into your active application.
 
 ## ✨ Features
 
 - **🚀 Instant Transcription**: Powered by Groq's LPUs for near-real-time inference.
-- **🧠 Smart Formatting**: Uses Llama 3 to fix grammar, punctuation, and format code blocks automatically.
+- **🧠 Smart Formatting**: Uses GPT OSS 120B to fix grammar, punctuation, and format code blocks automatically.
 - **👻 Ghost Typist**: Works in _any_ application (VS Code, Notes, Slack, Browser, etc.).
 - **⚡ Smart Commands**: Trigger web searches or AI assistants (like Gemini) while dictating.
 - **🤫 Headless**: Runs silently in the terminal with no intrusive UI.
@@ -25,7 +25,7 @@
 1.  **Clone the repository**:
 
     ```bash
-    git clone <your-repo-url>
+    git clone https://github.com/nathanlewis1/audioToTextFormat.git
     cd audioToTextFormat
     ```
 

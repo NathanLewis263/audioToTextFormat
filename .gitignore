@@ -1,2 +1,5 @@
 .env
 __pycache__
+overlay/node_modules
+overlay/dist
+overlay/dist-react
