@@ -1,81 +1,26 @@
-import sys
+import logging
 import os
-import threading
 import time
 import io
-import logging
+import sys
 import pathlib
-import webbrowser
+import subprocess
 from typing import Optional
+from pathlib import Path
 
 # Third-party libraries
 import sounddevice as sd
 import numpy as np
 import scipy.io.wavfile as wav
 import pyperclip
-import uvicorn
 from pynput import keyboard
 from groq import Groq
-from dotenv import load_dotenv
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from pathlib import Path
 
-# --- Setup & Configuration ---
-load_dotenv()
-
-# Constants
-HOTKEY = keyboard.Key.ctrl_l
-HOTKEY_DISPLAY = "Ctrl left"
+# Constants (moved from main.py)
 SAMPLE_RATE = 16000
 CHANNELS = 1
 DTYPE = 'int16'
-STATUS_SERVER_PORT = 3847
 
-# Custom Commands
-COMMANDS = {
-    'g': 'https://gemini.google.com',
-}
-
-# Logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-
-# --- Status Server (for Electron Overlay) ---
-def run_status_server(engine_ref, port: int = STATUS_SERVER_PORT):
-    """
-    Runs a lightweight FastAPI server.
-    The Electron overlay polls this for recording state and available commands.
-    """
-    app = FastAPI()
-    app.add_middleware(
-        CORSMiddleware, 
-        allow_origins=["*"], 
-        allow_methods=["*"], 
-        allow_headers=["*"]
-    )
-
-    @app.get("/status")
-    def status():
-        # Get command names/urls for display
-        cmds_display = {}
-        for k, v in COMMANDS.items():
-            if isinstance(v, str):
-                cmds_display[k] = v
-            else:
-                cmds_display[k] = getattr(v, "__name__", str(v))
-
-        return {
-            "recording": engine_ref.is_recording,
-            "hotkey": HOTKEY_DISPLAY,
-            "commands": cmds_display,
-        }
-
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
-
-
-# --- Voice Engine (Core Logic) ---
 class VoiceEngine:
     """
     Manages the audio pipeline:
@@ -98,16 +43,20 @@ class VoiceEngine:
     def get_system_prompt(self):
         """Loads the AI persona/instructions from templates/system.md"""
         try:
+            # Resolves to absolute path relative to THIS file's location
+            # If this file is in backend/, then templates/ is sibling
             system_prompt_path = Path(__file__).resolve().parent / "templates" / "system.md"
 
             if not system_prompt_path.exists():
                 self.logger.warning(f"File not found: {system_prompt_path}")
+                return "You are a helpful assistant."
 
             with open(system_prompt_path, "r") as f:
                 return f.read().strip()
         except Exception as e:
-            self.logger.warning(f"Could not read system.md:")
-    
+            self.logger.warning(f"Could not read system.md: {e}")
+            return "You are a helpful assistant."
+
     def start_recording(self):
         """Begins capturing audio from the microphone."""
         if self.is_recording:
@@ -250,82 +199,3 @@ class VoiceEngine:
             self.logger.info("Pasted via AppleScript")
         except Exception as e:
             self.logger.error(f"AppleScript failed: {e}")
-
-
-# --- Main Application Loop ---
-def main():
-    if not os.getenv("GROQ_API_KEY"):
-        return
-
-    engine = VoiceEngine()
-    
-    # Start the Overlay Status API in the background
-    threading.Thread(
-        target=run_status_server,
-        args=(engine, STATUS_SERVER_PORT),
-        daemon=True
-    ).start()
-
-    print(f"Stream Dictation Ready")
-    print(f"   • Press '{HOTKEY_DISPLAY}' to Toggle Recording")
-    print(f"   • Hold '{HOTKEY_DISPLAY}' + 'g' to ask Gemini")
-    print(f"   • Ctrl+C to Exit\n")
-
-    # State tracking
-    state = {
-        "hotkey_pressed": False,
-        "processing_command": False
-    }
-
-    def on_press(key):
-        # 1. Main Hotkey Logic
-        if key == HOTKEY:
-            if not state["hotkey_pressed"]:
-                state["hotkey_pressed"] = True
-                state["processing_command"] = False
-                
-                # Toggle Recording
-                if engine.is_recording:
-                    # Stop & Process
-                    threading.Thread(target=lambda: engine.process_audio(engine.stop_recording())).start()
-                else:
-                    # Start
-                    threading.Thread(target=engine.start_recording).start()
-            return
-
-        # 2. Command Shortcuts (Hotkey + Key)
-        if state["hotkey_pressed"] and not state["processing_command"]:
-            try:
-                if hasattr(key, 'char') and key.char in COMMANDS:
-                    cmd_key = key.char
-                    cmd_value = COMMANDS[cmd_key]
-                    
-                    # Stop recording, ignore that audio for dictation
-                    audio_data = engine.stop_recording()
-                    
-                    # Execute Command
-                    if isinstance(cmd_value, str) and cmd_value.startswith('http'):
-                        webbrowser.open(cmd_value)
-                    
-                    # Process audio for the command (e.g. prompt for Gemini)
-                    # We add a delay to let the browser open
-                    if audio_data is not None:
-                        threading.Thread(target=engine.process_audio, args=(audio_data, 2.0)).start()
-                    
-                    state["processing_command"] = True
-            except AttributeError:
-                pass
-
-    def on_release(key):
-        if key == HOTKEY:
-            state["hotkey_pressed"] = False
-
-    # Start Keyboard Listener
-    with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
-        try:
-            listener.join()
-        except KeyboardInterrupt:
-            print("\nExiting...")
-
-if __name__ == "__main__":
-    main()
