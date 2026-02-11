@@ -4,12 +4,14 @@ export interface StatusData {
   recording: boolean;
   hotkey: string;
   commands: Record<string, string> | null;
+  snippets: Record<string, string> | null;
 }
 
 export const useStatus = () => {
   const [recording, setRecording] = useState(false);
   const [hotkey, setHotkey] = useState("—");
   const [commands, setCommands] = useState<Record<string, string> | null>(null);
+  const [snippets, setSnippets] = useState<Record<string, string> | null>(null);
 
   const statusPort = window.overlay?.statusPort || 3847;
   const POLL_MS = 200;
@@ -22,6 +24,7 @@ export const useStatus = () => {
         setRecording(Boolean(data.recording));
         setHotkey(data.hotkey || "—");
         setCommands(data.commands);
+        setSnippets(data.snippets);
 
         // Update border styles based on recording state - Global side effect
         const edges = document.querySelectorAll(".border-edge");
@@ -36,6 +39,7 @@ export const useStatus = () => {
         setRecording(false);
         setHotkey("—");
         setCommands(null);
+        setSnippets(null);
       }
     };
 
@@ -45,5 +49,5 @@ export const useStatus = () => {
     return () => clearInterval(interval);
   }, [statusPort]);
 
-  return { recording, hotkey, commands };
+  return { recording, hotkey, commands, snippets, statusPort };
 };
