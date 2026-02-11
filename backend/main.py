@@ -7,7 +7,7 @@ from pynput import keyboard
 from dotenv import load_dotenv
 
 from voice_engine import VoiceEngine
-from commands import COMMANDS
+from commands import command_manager
 from server import run_status_server, STATUS_SERVER_PORT
 
 # --- Setup & Configuration ---
@@ -67,9 +67,11 @@ def main():
         # 2. Command Shortcuts (Hotkey + Key)
         if state["hotkey_pressed"] and not state["processing_command"]:
             try:
-                if hasattr(key, 'char') and key.char in COMMANDS:
+                # Fetch latest commands from manager
+                current_commands = command_manager.get_commands()
+                if hasattr(key, 'char') and key.char in current_commands:
                     cmd_key = key.char
-                    cmd_value = COMMANDS[cmd_key]
+                    cmd_value = current_commands[cmd_key]
                     
                     # Stop recording, ignore that audio for dictation
                     audio_data = engine.stop_recording()

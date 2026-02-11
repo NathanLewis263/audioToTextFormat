@@ -15,6 +15,7 @@ import scipy.io.wavfile as wav
 import pyperclip
 from pynput import keyboard
 from groq import Groq
+from commands import command_manager
 
 # Constants (moved from main.py)
 SAMPLE_RATE = 16000
@@ -129,12 +130,13 @@ class VoiceEngine:
             if not raw_text:
                 return
 
+            
             # 3. Refine/Format using LLM
             completion = self.client.chat.completions.create(
                 model="openai/gpt-oss-120b",
                 messages=[
                     {"role": "system", "content": self.get_system_prompt()},
-                    {"role": "user", "content": raw_text}
+                    {"role": "user", "content": f"Snippets: {command_manager.get_snippets()}, Transcription: {raw_text}"}
                 ],
                 temperature=0.0,
                 max_tokens=1024
