@@ -1,9 +1,14 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState } from "react";
+import { useStatus } from "../hooks/useStatus";
+import { useDraggable } from "../hooks/useDraggable";
 
 // Type for the window.overlay object exposed by preload script
 interface OverlayAPI {
   statusPort: number;
   setIgnoreMouseEvents?: (ignore: boolean) => void;
+  updateTray?: (recording: boolean) => void;
+  quitApp?: () => void;
+  toggleOverlay?: () => void;
 }
 
 declare global {
@@ -45,101 +50,10 @@ const CommandRow = ({ cmdKey, desc }: { cmdKey: string; desc: string }) => (
 );
 
 const InfoPanel = () => {
-  const [recording, setRecording] = useState(false);
-  const [hotkey, setHotkey] = useState("—");
-  const [commands, setCommands] = useState<Record<string, string> | null>(null);
+  const { recording, hotkey, commands } = useStatus();
   const [isCollapsed, setIsCollapsed] = useState(false);
-
-  // Drag state
-  const [position, setPosition] = useState({ top: 24, right: 24 });
-  const isDragging = useRef(false);
-  const dragOffset = useRef({ x: 0, y: 0 });
-
-  const statusPort = window.overlay?.statusPort || 3847;
-  const POLL_MS = 200;
-
-  // --- Polling Logic ---
-  useEffect(() => {
-    const poll = async () => {
-      try {
-        const res = await fetch(`http://127.0.0.1:${statusPort}/status`);
-        const data = await res.json();
-        setRecording(Boolean(data.recording));
-        setHotkey(data.hotkey || "—");
-        setCommands(data.commands);
-
-        // Update border styles based on recording state
-        const edges = document.querySelectorAll(".border-edge");
-        edges.forEach((edge) => {
-          if (data.recording) edge.classList.add("recording");
-          else edge.classList.remove("recording");
-        });
-      } catch (err) {
-        setRecording(false);
-        setHotkey("—");
-        setCommands(null);
-      }
-    };
-
-    const interval = setInterval(poll, POLL_MS);
-    poll(); // Initial call
-
-    return () => clearInterval(interval);
-  }, [statusPort]);
-
-  // --- Mouse Transparency Logic ---
-  const handleMouseEnter = () => {
-    if (window.overlay?.setIgnoreMouseEvents) {
-      window.overlay.setIgnoreMouseEvents(false);
-    }
-  };
-
-  const handleMouseLeave = () => {
-    if (!isDragging.current && window.overlay?.setIgnoreMouseEvents) {
-      window.overlay.setIgnoreMouseEvents(true);
-    }
-  };
-
-  // --- Drag Logic ---
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest(".toggle-btn")) return;
-
-    isDragging.current = true;
-    dragOffset.current = {
-      x: e.clientX,
-      y: e.clientY,
-    };
-
-    if (window.overlay?.setIgnoreMouseEvents) {
-      window.overlay.setIgnoreMouseEvents(false);
-    }
-
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-  };
-
-  const handleMouseMove = (e: MouseEvent) => {
-    if (!isDragging.current) return;
-
-    const dx = e.clientX - dragOffset.current.x;
-    const dy = e.clientY - dragOffset.current.y;
-
-    setPosition((prev) => ({
-      right: prev.right - dx,
-      top: prev.top + dy,
-    }));
-
-    dragOffset.current = {
-      x: e.clientX,
-      y: e.clientY,
-    };
-  };
-
-  const handleMouseUp = () => {
-    isDragging.current = false;
-    document.removeEventListener("mousemove", handleMouseMove);
-    document.removeEventListener("mouseup", handleMouseUp);
-  };
+  const { position, handleMouseDown, handleMouseEnter, handleMouseLeave } =
+    useDraggable({ top: 80, right: 24 }); // Positioned below the tray by default
 
   // --- Toggle Logic ---
   const toggleCollapse = (e: React.MouseEvent) => {
