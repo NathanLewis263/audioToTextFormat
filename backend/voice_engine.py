@@ -14,6 +14,7 @@ import scipy.io.wavfile as wav
 import pyperclip
 from pynput import keyboard
 from groq import Groq
+import ten_vad
 from commands import command_manager
 
 # Constants (moved from main.py)
@@ -33,6 +34,13 @@ class VoiceEngine:
         self.logger = logging.getLogger(__name__)
         self.api_key = os.getenv("GROQ_API_KEY")
         self.lock = threading.RLock()
+
+        # Initialize TEN VAD if available
+        self.vad = None
+        try:
+            self.vad = ten_vad.TenVad()
+        except Exception as e:
+            self.logger.error(f"Failed to initialize TEN VAD: {e}")
         
         if not self.api_key:
             self.logger.error("GROQ_API_KEY environment variable not found!")
@@ -111,6 +119,38 @@ class VoiceEngine:
                 
             return np.concatenate(self.audio_data, axis=0)
 
+
+    def _contains_speech(self, audio_data: np.ndarray) -> bool:
+        """
+        Checks for sustained, high-confidence speech using ten-vad.
+        This is tuned to be AGGRESSIVE (filter out background music/noise).
+        """
+        if not getattr(self, 'vad', None):
+            return True
+
+        try: 
+            hop_size = 256 
+            consecutive = 0
+            min_consecutive = 8 
+            min_prob = 0.85      # require high VAD confidence
+            
+            for i in range(0, len(audio_data) - hop_size, hop_size):
+                frame = audio_data[i:i+hop_size]
+                prob, is_speech = self.vad.process(frame)
+
+                if is_speech and prob >= min_prob:
+                    consecutive += 1
+                    if consecutive >= min_consecutive:
+                        return True
+                else:
+                    consecutive = 0
+            print(f"No speech detected: {consecutive} frames")
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"VAD check failed: {e}")
+            return True
+
     def process_audio(self, audio_data: Optional[np.ndarray], min_delay: float = 0):
         """
         The main processing pipeline. 
@@ -127,12 +167,17 @@ class VoiceEngine:
         try:
             start_time = time.time()
             
-            # 1. Convert raw audio to WAV
+            # --- 0. Silence Detection (VAD) ---
+            if not self._contains_speech(audio_data):
+                self.logger.info("Discarded audio due to silence (ten-vad detection).")
+                return
+
+            # --- 1. Convert raw audio to WAV ---
             wav_buffer = io.BytesIO()
             wav.write(wav_buffer, SAMPLE_RATE, audio_data)
             wav_buffer.seek(0)
             
-            # 2. Transcribe using Groq Whisper
+            # --- 2. Transcribe using Groq Whisper ---
             transcription = self.client.audio.transcriptions.create(
                 file=("audio.wav", wav_buffer.read()),
                 model="whisper-large-v3-turbo",
@@ -145,7 +190,7 @@ class VoiceEngine:
             if not raw_text:
                 return
 
-            # 3. Refine/Format using LLM
+            # --- 3. Refine/Format using LLM ---
             completion = self.client.chat.completions.create(
                 model="openai/gpt-oss-120b",
                 messages=[
@@ -158,12 +203,12 @@ class VoiceEngine:
             final_text = completion.choices[0].message.content.strip()
             self.logger.info(f"Final: {final_text}")
 
-            # 4. Wait if needed (e.g., for browser to open)
+            # --- 4. Wait if needed (e.g., for browser to open) ---
             elapsed = time.time() - start_time
             if elapsed < min_delay:
                 time.sleep(min_delay - elapsed)
                 
-            # 5. Insert Text
+            # --- 5. Insert Text ---
             self._smart_paste(final_text)
 
         except Exception as e:
