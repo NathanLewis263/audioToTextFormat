@@ -7,6 +7,7 @@ import {
   Menu,
   nativeImage,
 } from "electron";
+import { uIOhook, UiohookKey } from "uiohook-napi";
 import * as path from "path";
 
 function createOverlayWindow(): BrowserWindow {
@@ -158,13 +159,10 @@ ipcMain.on("update-tray", (_event, recording: boolean) => {
 });
 
 // IPC listener to toggle mouse transparency (click-through)
-ipcMain.on(
-  "set-ignore-mouse-events",
-  (event: any, ignore: boolean) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    win?.setIgnoreMouseEvents(ignore, { forward: true });
-  },
-);
+ipcMain.on("set-ignore-mouse-events", (event: any, ignore: boolean) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  win?.setIgnoreMouseEvents(ignore, { forward: true });
+});
 
 ipcMain.on("quit-app", () => {
   app.quit();
@@ -172,7 +170,7 @@ ipcMain.on("quit-app", () => {
 
 ipcMain.on("toggle-overlay", () => {
   const windows = BrowserWindow.getAllWindows();
-  
+
   // Find overlay windows (not tray window)
   const overlayWindows = windows.filter((w) => w !== trayWindow);
   const anyVisible = overlayWindows.some((w) => w.isVisible());
@@ -187,3 +185,93 @@ ipcMain.on("toggle-overlay", () => {
 app.on("window-all-closed", () => {
   app.quit();
 });
+
+// --- uiohook-napi Integration ---
+
+let isRecording = false;
+let ctrlPressed = false;
+let processingCommand = false;
+let isHandsFree = false;
+
+// Config
+const API_URL = "http://127.0.0.1:3847";
+
+// Helper to call backend
+const callBackend = async (
+  endpoint: string,
+  method: "POST" | "GET" = "POST",
+) => {
+  try {
+    const res = await fetch(`${API_URL}${endpoint}`, { method });
+    // Attempt to parse JSON if possible, but don't crash if empty
+    try {
+      const json = await res.json();
+      // console.log(`[main.ts] Response from ${endpoint}:`, json);
+    } catch (e) {}
+  } catch (e) {
+    console.error(`[main.ts] Failed to call ${endpoint}:`, e);
+  }
+};
+
+// Define isDev for this scope
+const isDev = true; // FORCE TRUE for debugging
+
+console.log("--- uIOhook Integration Loaded ---");
+
+uIOhook.on("keydown", async (e: any) => {
+  // Always log for now
+  console.log(`Keydown: keycode=${e.keycode}, rawcode=${e.rawcode}`);
+
+  // Left Control Detection (keycode 29)
+  const isCtrl = e.keycode === UiohookKey.Ctrl;
+
+  if (isCtrl) {
+    if (!ctrlPressed) {
+      ctrlPressed = true;
+      if (isDev) console.log("Ctrl Pressed");
+
+      // START RECORDING (Hold Mode)
+      if (!isRecording && !processingCommand) {
+        callBackend("/action/start"); // Explicit Start
+        isRecording = true;
+      }
+    }
+    return;
+  }
+
+  // If Ctrl is held, check for combinations
+  if (ctrlPressed) {
+    // Ctrl + Space -> Toggle Hands-Free
+    if (e.keycode === UiohookKey.Space) {
+      if (isDev) console.log("Toggle Hands-Free");
+      isHandsFree = !isHandsFree;
+    }
+  } else {
+    // Fallback: Option + Space
+    if (e.altKey && e.keycode === UiohookKey.Space) {
+      callBackend("/action/toggle"); // Keep toggle for hotkey
+      isRecording = !isRecording; // Optimistic update
+    }
+  }
+});
+
+uIOhook.on("keyup", (e: any) => {
+  const isCtrl = e.keycode === 29; // Left Control
+
+  if (isCtrl) {
+    if (ctrlPressed) {
+      ctrlPressed = false;
+      if (isDev) console.log("Ctrl Released");
+
+      // STOP RECORDING (if not Hands-Free)
+      if (isRecording && !isHandsFree) {
+        callBackend("/action/stop"); // Explicit Stop
+        isRecording = false;
+      }
+
+      processingCommand = false;
+    }
+  }
+});
+
+uIOhook.start();

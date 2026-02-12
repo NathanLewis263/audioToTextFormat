@@ -3,8 +3,7 @@ import os
 import time
 import io
 import sys
-import pathlib
-import subprocess
+import threading
 from typing import Optional
 from pathlib import Path
 
@@ -33,6 +32,7 @@ class VoiceEngine:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.api_key = os.getenv("GROQ_API_KEY")
+        self.lock = threading.RLock()
         
         if not self.api_key:
             self.logger.error("GROQ_API_KEY environment variable not found!")
@@ -60,23 +60,27 @@ class VoiceEngine:
 
     def start_recording(self):
         """Begins capturing audio from the microphone."""
-        if self.is_recording:
-            return
+        with self.lock:
+            if self.is_recording:
+                self.logger.warning("Already recording, ignoring start request")
+                return
+                
+            self.logger.info("*** STARTING RECORDING ***")
+            self.is_recording = True
+            self.audio_data = []
             
-        self.is_recording = True
-        self.audio_data = []
-        
-        try:
-            self.stream = sd.InputStream(
-                samplerate=SAMPLE_RATE,
-                channels=CHANNELS,
-                dtype=DTYPE,
-                callback=self._audio_callback
-            )
-            self.stream.start()
-        except Exception as e:
-            self.logger.error(f"Failed to start audio stream: {e}")
-            self.is_recording = False
+            try:
+                self.stream = sd.InputStream(
+                    samplerate=SAMPLE_RATE,
+                    channels=CHANNELS,
+                    dtype=DTYPE,
+                    callback=self._audio_callback
+                )
+                self.stream.start()
+                self.logger.info("Audio stream started successfully")
+            except Exception as e:
+                self.logger.error(f"Failed to start audio stream: {e}")
+                self.is_recording = False
 
     def _audio_callback(self, indata, frames, time, status):
         """Internal callback for sounddevice."""
@@ -87,24 +91,35 @@ class VoiceEngine:
 
     def stop_recording(self) -> Optional[np.ndarray]:
         """Stops capturing and returns the full audio buffer."""
-        if not self.is_recording:
-            return None
+        with self.lock:
+            if not self.is_recording:
+                self.logger.warning("Not recording, ignoring stop request")
+                return None
+                
+            self.logger.info("*** STOPPING RECORDING ***")
+            self.is_recording = False
+            try:
+                if hasattr(self, 'stream'):
+                    self.stream.stop()
+                    self.stream.close()
+            except Exception as e:
+                self.logger.error(f"Error stopping stream: {e}")
             
-        self.is_recording = False
-        if hasattr(self, 'stream'):
-            self.stream.stop()
-            self.stream.close()
-        
-        if not self.audio_data:
-            return None
-            
-        return np.concatenate(self.audio_data, axis=0)
+            if not self.audio_data:
+                self.logger.warning("No audio data captured")
+                return None
+                
+            return np.concatenate(self.audio_data, axis=0)
 
-    def process_audio(self, audio_data: np.ndarray, min_delay: float = 0):
+    def process_audio(self, audio_data: Optional[np.ndarray], min_delay: float = 0):
         """
         The main processing pipeline. 
         Runs in a separate thread to not block the UI/Hotkey listener.
         """
+        if audio_data is None:
+            self.logger.warning("process_audio called with None data")
+            return
+
         if not self.client:
             self.logger.error("No API Client available.")
             return
@@ -130,7 +145,6 @@ class VoiceEngine:
             if not raw_text:
                 return
 
-            
             # 3. Refine/Format using LLM
             completion = self.client.chat.completions.create(
                 model="openai/gpt-oss-120b",
