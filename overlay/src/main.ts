@@ -6,8 +6,10 @@ import {
   Tray,
   Menu,
   nativeImage,
+  clipboard,
 } from "electron";
 import { uIOhook, UiohookKey } from "uiohook-napi";
+import { keyboard, Key } from "@nut-tree-fork/nut-js";
 import * as path from "path";
 
 function createOverlayWindow(): BrowserWindow {
@@ -275,3 +277,35 @@ uIOhook.on("keyup", (e: any) => {
 });
 
 uIOhook.start();
+
+const pasteText = async (text: string) => {
+  clipboard.writeText(text);
+  try {
+    if (process.platform === "darwin") {
+      await keyboard.pressKey(Key.LeftSuper, Key.V);
+      await keyboard.releaseKey(Key.LeftSuper, Key.V);
+    } else {
+      await keyboard.pressKey(Key.LeftControl, Key.V);
+      await keyboard.releaseKey(Key.LeftControl, Key.V);
+    }
+    console.log("Pasted via nut.js");
+  } catch (e) {
+    console.error("Failed to simulate paste:", e);
+  }
+};
+
+// Poll for text to paste
+setInterval(async () => {
+  if (isRecording || processingCommand) return;
+
+  try {
+    const res = await fetch(`${API_URL}/consume_text`);
+    const json = await res.json();
+    if (json.text) {
+      console.log("[main.ts] Received text to paste:", json.text);
+      pasteText(json.text);
+    }
+  } catch (e) {
+
+  }
+}, 500);

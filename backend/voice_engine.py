@@ -47,7 +47,9 @@ class VoiceEngine:
         
         self.client = Groq(api_key=self.api_key) if self.api_key else None
         self.is_recording = False
+        self.is_processing = False
         self.audio_data = []
+        self.generated_text = [] # Queue for frontend to consume
 
     def get_system_prompt(self):
         """Loads the AI persona/instructions from templates/system.md"""
@@ -160,11 +162,12 @@ class VoiceEngine:
             self.logger.warning("process_audio called with None data")
             return
 
-        if not self.client:
-            self.logger.error("No API Client available.")
-            return
-
+        self.is_processing = True
         try:
+            if not self.client:
+                self.logger.error("No API Client available.")
+                return
+
             start_time = time.time()
             
             # --- 0. Silence Detection (VAD) ---
@@ -197,66 +200,21 @@ class VoiceEngine:
                     {"role": "system", "content": self.get_system_prompt()},
                     {"role": "user", "content": f"Snippets: {command_manager.get_snippets()}, Transcription: {raw_text}"}
                 ],
-                temperature=0.0,
-                max_tokens=1024
+                temperature=0.0
             )
             final_text = completion.choices[0].message.content.strip()
             self.logger.info(f"Final: {final_text}")
+
+            # Store for frontend to consume
+            with self.lock:
+                self.generated_text.append(final_text)
 
             # --- 4. Wait if needed (e.g., for browser to open) ---
             elapsed = time.time() - start_time
             if elapsed < min_delay:
                 time.sleep(min_delay - elapsed)
-                
-            # --- 5. Insert Text ---
-            self._smart_paste(final_text)
 
         except Exception as e:
             self.logger.error(f"Processing error: {e}")
-
-    def _smart_paste(self, text):
-        """Copies text to clipboard and simulates Paste (Cmd+V / Ctrl+V)."""
-        try:
-            pyperclip.copy(text)
-            
-            if sys.platform == 'darwin':
-                self._paste_macos(text)
-            else:
-                self._paste_generic()
-            
-            time.sleep(0.1) 
-        except Exception as e:
-            self.logger.error(f"Paste error: {e}")
-
-    def _paste_macos(self, text):
-        """Tries pynput first, falls back to AppleScript."""
-        try:
-            controller = keyboard.Controller()
-            with controller.pressed(keyboard.Key.cmd):
-                controller.press('v')
-                controller.release('v')
-        except Exception:
-            self._apple_script_paste(text)
-
-    def _paste_generic(self):
-        """Windows/Linux paste."""
-        controller = keyboard.Controller()
-        with controller.pressed(keyboard.Key.ctrl):
-            controller.press('v')
-            controller.release('v')
-
-    def _apple_script_paste(self, text):
-        """Robust fallback for macOS if pynput permissions fail."""
-        try:
-            import subprocess
-            safe_text = text.replace('"', '\\"')
-            script = f'''
-            set the clipboard to "{safe_text}"
-            tell application "System Events"
-                keystroke "v" using command down
-            end tell
-            '''
-            subprocess.run(['osascript', '-e', script], check=True)
-            self.logger.info("Pasted via AppleScript")
-        except Exception as e:
-            self.logger.error(f"AppleScript failed: {e}")
+        finally:
+            self.is_processing = False

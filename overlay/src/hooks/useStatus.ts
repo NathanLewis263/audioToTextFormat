@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 
 export interface StatusData {
   recording: boolean;
+  processing: boolean;
   hotkey: string;
   commands: Record<string, string> | null;
   snippets: Record<string, string> | null;
@@ -9,6 +10,7 @@ export interface StatusData {
 
 export const useStatus = () => {
   const [recording, setRecording] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const [hotkey, setHotkey] = useState("—");
   const [commands, setCommands] = useState<Record<string, string> | null>(null);
   const [snippets, setSnippets] = useState<Record<string, string> | null>(null);
@@ -22,15 +24,23 @@ export const useStatus = () => {
         const res = await fetch(`http://127.0.0.1:${statusPort}/status`);
         const data = await res.json();
         setRecording(Boolean(data.recording));
+        setProcessing(Boolean(data.processing));
         setHotkey(data.hotkey || "—");
         setCommands(data.commands);
         setSnippets(data.snippets);
 
-        // Update border styles based on recording state - Global side effect
+        // Update border styles based on recording/processing state
         const edges = document.querySelectorAll(".border-edge");
         edges.forEach((edge) => {
-          if (data.recording) edge.classList.add("recording");
-          else edge.classList.remove("recording");
+          if (data.recording) {
+            edge.classList.add("recording");
+            edge.classList.remove("processing");
+          } else if (data.processing) {
+            edge.classList.add("processing");
+            edge.classList.remove("recording");
+          } else {
+            edge.classList.remove("recording", "processing");
+          }
         });
 
         // Sync tray status

@@ -28,6 +28,7 @@
     "vite": "^7.3.1"
   },
   "dependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
     "class-variance-authority": "^0.7.1",
     "classnames": "^2.5.1",

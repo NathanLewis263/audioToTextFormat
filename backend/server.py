@@ -39,6 +39,7 @@ def run_status_server(engine_ref):
 
         return {
             "recording": engine_ref.is_recording,
+            "processing": getattr(engine_ref, "is_processing", False),
             "hotkey": "Ctrl Left",
             "commands": cmds_display,
             "snippets": command_manager.get_snippets()
@@ -79,8 +80,8 @@ def run_status_server(engine_ref):
             if engine_ref.is_recording:
                 audio_data = engine_ref.stop_recording()
                 threading.Thread(target=lambda: engine_ref.process_audio(audio_data)).start()
-                return {"status": "ok", "recording": False}
-            return {"status": "ignored", "recording": False}
+                return {"status": "ok", "recording": False, "processing": True}
+            return {"status": "ignored", "recording": False, "processing": False}
 
     @app.post("/action/toggle")
     def action_toggle():
@@ -93,11 +94,20 @@ def run_status_server(engine_ref):
                 # Spawn processing in background thread
                 threading.Thread(target=lambda: engine_ref.process_audio(audio_data)).start()
                 
-                return {"status": "ok", "recording": False}
+                return {"status": "ok", "recording": False, "processing": True}
             else:
                 # Start - Call synchronously
                 engine_ref.start_recording()
-                return {"status": "ok", "recording": True}
+                return {"status": "ok", "recording": True, "processing": False}
+
+    @app.get("/consume_text")
+    def consume_text():
+        """Returns the oldest generated text and removes it from queue."""
+        with engine_ref.lock:
+            if engine_ref.generated_text:
+                text = engine_ref.generated_text.pop(0)
+                return {"text": text}
+            return {"text": None}
 
     @app.post("/action/trigger/{key}")
     def action_trigger(key: str):
