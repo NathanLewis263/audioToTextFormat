@@ -6,11 +6,11 @@ import {
   Tray,
   Menu,
   nativeImage,
-  clipboard,
 } from "electron";
-import { uIOhook, UiohookKey } from "uiohook-napi";
-import { keyboard, Key } from "@nut-tree-fork/nut-js";
 import * as path from "path";
+import { setupHotkeys, setRecordingState, setHandsFreeState } from "./main/hotkeys";
+import { handleCommandMode, pasteText } from "./main/commands";
+import { callBackend, API_URL } from "./main/api";
 
 function createOverlayWindow(): BrowserWindow {
   const primary = screen.getPrimaryDisplay();
@@ -49,8 +49,7 @@ function createOverlayWindow(): BrowserWindow {
   if (isDev) {
     win.loadURL("http://localhost:3000");
   } else {
-    // In production, we load the index.html from dist-react (configured in vite.config.ts)
-    // Note: We need to ensure dist-react is correct relative path
+    // In production, we load the index.html from dist-react
     win.loadFile(path.join(__dirname, "..", "dist-react", "index.html"));
   }
 
@@ -188,124 +187,63 @@ app.on("window-all-closed", () => {
   app.quit();
 });
 
-// --- uiohook-napi Integration ---
-
-let isRecording = false;
-let ctrlPressed = false;
-let processingCommand = false;
+// --- State and Config ---
+let isCommandMode = false;
+let isQuickCommand = false;
 let isHandsFree = false;
+let isRecording = false;
 
-// Config
-const API_URL = "http://127.0.0.1:3847";
-
-// Helper to call backend
-const callBackend = async (
-  endpoint: string,
-  method: "POST" | "GET" = "POST",
-) => {
-  try {
-    const res = await fetch(`${API_URL}${endpoint}`, { method });
-    // Attempt to parse JSON if possible, but don't crash if empty
-    try {
-      const json = await res.json();
-      // console.log(`[main.ts] Response from ${endpoint}:`, json);
-    } catch (e) {}
-  } catch (e) {
-    console.error(`[main.ts] Failed to call ${endpoint}:`, e);
-  }
-};
-
-// Define isDev for this scope
-const isDev = true; // FORCE TRUE for debugging
-
-console.log("--- uIOhook Integration Loaded ---");
-
-uIOhook.on("keydown", async (e: any) => {
-  // Always log for now
-  console.log(`Keydown: keycode=${e.keycode}, rawcode=${e.rawcode}`);
-
-  // Left Control Detection (keycode 29)
-  const isCtrl = e.keycode === UiohookKey.Ctrl;
-
-  if (isCtrl) {
-    if (!ctrlPressed) {
-      ctrlPressed = true;
-      if (isDev) console.log("Ctrl Pressed");
-
-      // START RECORDING (Hold Mode)
-      if (!isRecording && !processingCommand) {
-        callBackend("/action/start"); // Explicit Start
-        isRecording = true;
-      }
+// --- Hotkey Integration ---
+setupHotkeys({
+  onStartRecording: () => {
+    isRecording = true;
+    setRecordingState(isRecording);
+    callBackend("/action/start");
+  },
+  onStopRecording: () => {
+    isRecording = false;
+    callBackend("/action/stop");
+  },
+  onToggleRecording: () => {
+    isRecording = !isRecording;
+    setRecordingState(isRecording);
+    callBackend("/action/toggle");
+  },
+  onToggleHandsFree: () => {
+    isHandsFree = !isHandsFree;
+    setHandsFreeState(isHandsFree);
+  },
+  onCommandMode: (isActive: boolean) => {
+    // Toggling persistent mode
+    if (isActive) {
+      isCommandMode = !isCommandMode;
     }
-    return;
-  }
-
-  // If Ctrl is held, check for combinations
-  if (ctrlPressed) {
-    // Ctrl + Space -> Toggle Hands-Free
-    if (e.keycode === UiohookKey.Space) {
-      if (isDev) console.log("Toggle Hands-Free");
-      isHandsFree = !isHandsFree;
-    }
-  } else {
-    // Fallback: Option + Space
-    if (e.altKey && e.keycode === UiohookKey.Space) {
-      callBackend("/action/toggle"); // Keep toggle for hotkey
-      isRecording = !isRecording; // Optimistic update
-    }
-  }
+  },
+  onQuickCommand: (isActive: boolean) => {
+    isQuickCommand = isActive;
+  },
 });
-
-uIOhook.on("keyup", (e: any) => {
-  const isCtrl = e.keycode === 29; // Left Control
-
-  if (isCtrl) {
-    if (ctrlPressed) {
-      ctrlPressed = false;
-      if (isDev) console.log("Ctrl Released");
-
-      // STOP RECORDING (if not Hands-Free)
-      if (isRecording && !isHandsFree) {
-        callBackend("/action/stop"); // Explicit Stop
-        isRecording = false;
-      }
-
-      processingCommand = false;
-    }
-  }
-});
-
-uIOhook.start();
-
-const pasteText = async (text: string) => {
-  clipboard.writeText(text);
-  try {
-    if (process.platform === "darwin") {
-      await keyboard.pressKey(Key.LeftSuper, Key.V);
-      await keyboard.releaseKey(Key.LeftSuper, Key.V);
-    } else {
-      await keyboard.pressKey(Key.LeftControl, Key.V);
-      await keyboard.releaseKey(Key.LeftControl, Key.V);
-    }
-    console.log("Pasted via nut.js");
-  } catch (e) {
-    console.error("Failed to simulate paste:", e);
-  }
-};
 
 // Poll for text to paste
 setInterval(async () => {
-  if (isRecording || processingCommand) return;
+  if (isRecording) return;
 
   try {
     const res = await fetch(`${API_URL}/consume_text`);
     const json = await res.json();
     if (json.text) {
       console.log("[main.ts] Received text to paste:", json.text);
-      pasteText(json.text);
-    }
-  } catch (e) {
 
-  }
+      const shouldHandleAsCommand = isCommandMode || isQuickCommand;
+
+      if (shouldHandleAsCommand) {
+        // Reset transient state, but keep persistent isCommandMode
+        isQuickCommand = false;
+
+        handleCommandMode(json.text);
+      } else {
+        pasteText(json.text);
+      }
+    }
+  } catch (e) {} 
 }, 500);

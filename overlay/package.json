@@ -34,6 +34,7 @@
     "classnames": "^2.5.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.563.0",
+    "node-get-selected-text": "^0.1.9",
     "radix-ui": "^1.4.3",
     "react": "^19.2.4",
     "tailwind-merge": "^3.4.0",
