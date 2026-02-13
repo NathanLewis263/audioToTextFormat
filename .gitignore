@@ -4,3 +4,4 @@ overlay/node_modules
 overlay/dist
 overlay/dist-react
 user_data.json
+.vscode
