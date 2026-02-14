@@ -31,34 +31,13 @@ def run_status_server(engine_ref):
 
     @app.get("/status")
     def status():
-        # Get command names/urls for display
-        cmds_display = {}
-        # Fetch fresh commands from manager
-        current_cmds = command_manager.get_commands()
-        for k, v in current_cmds.items():
-            if isinstance(v, str):
-                cmds_display[k] = v
-            else:
-                cmds_display[k] = getattr(v, "__name__", str(v))
-
         return {
             "recording": engine_ref.is_recording,
             "processing": getattr(engine_ref, "is_processing", False),
             "hotkey": "Ctrl Left",
-            "commands": cmds_display,
             "snippets": command_manager.get_snippets()
         }
     
-
-    @app.post("/commands")
-    def add_command(item: Item):
-        command_manager.add_command(item.key, item.value)
-        return {"status": "ok"}
-
-    @app.delete("/commands/{key}")
-    def delete_command(key: str):
-        command_manager.remove_command(key)
-        return {"status": "ok"}
 
     @app.post("/snippets")
     def add_snippet(item: Item):

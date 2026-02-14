@@ -12,7 +12,6 @@ export const useStatus = () => {
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [hotkey, setHotkey] = useState("—");
-  const [commands, setCommands] = useState<Record<string, string> | null>(null);
   const [snippets, setSnippets] = useState<Record<string, string> | null>(null);
 
   const statusPort = window.overlay?.statusPort || 3847;
@@ -26,7 +25,6 @@ export const useStatus = () => {
         setRecording(Boolean(data.recording));
         setProcessing(Boolean(data.processing));
         setHotkey(data.hotkey || "—");
-        setCommands(data.commands);
         setSnippets(data.snippets);
 
         // Update border styles based on recording/processing state
@@ -48,7 +46,6 @@ export const useStatus = () => {
       } catch (err) {
         setRecording(false);
         setHotkey("—");
-        setCommands(null);
         setSnippets(null);
       }
     };
@@ -59,5 +56,5 @@ export const useStatus = () => {
     return () => clearInterval(interval);
   }, [statusPort]);
 
-  return { recording, hotkey, commands, snippets, statusPort };
+  return { recording, hotkey, snippets, statusPort };
 };

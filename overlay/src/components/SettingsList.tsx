@@ -1,13 +1,11 @@
 import React, { useState } from "react";
 
 interface SettingsListProps {
-  type: "commands" | "snippets";
   items: Record<string, string> | null;
   statusPort: number;
 }
 
 export const SettingsList: React.FC<SettingsListProps> = ({
-  type,
   items,
   statusPort,
 }) => {
@@ -17,7 +15,7 @@ export const SettingsList: React.FC<SettingsListProps> = ({
   const addItem = async () => {
     if (!newKey || !newValue) return;
     try {
-      await fetch(`http://127.0.0.1:${statusPort}/${type}`, {
+      await fetch(`http://127.0.0.1:${statusPort}/snippets`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key: newKey, value: newValue }),
@@ -25,17 +23,17 @@ export const SettingsList: React.FC<SettingsListProps> = ({
       setNewKey("");
       setNewValue("");
     } catch (e) {
-      console.error(`Failed to add ${type}`, e);
+      console.error(`Failed to add snippet`, e);
     }
   };
 
   const deleteItem = async (key: string) => {
     try {
-      await fetch(`http://127.0.0.1:${statusPort}/${type}/${key}`, {
+      await fetch(`http://127.0.0.1:${statusPort}/snippets/${key}`, {
         method: "DELETE",
       });
     } catch (e) {
-      console.error(`Failed to delete ${type}`, e);
+      console.error(`Failed to delete snippet`, e);
     }
   };
 
@@ -45,14 +43,14 @@ export const SettingsList: React.FC<SettingsListProps> = ({
         <input
           type="text"
           placeholder="New Key"
-          className="w-1/3 bg-zinc-800 border border-white/10 rounded px-2 py-1 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+          className="w-1/2 bg-zinc-800 border border-white/10 rounded px-2 py-1 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
           value={newKey}
           onChange={(e) => setNewKey(e.target.value)}
         />
         <input
           type="text"
           placeholder="Value"
-          className="flex-1 bg-zinc-800 border border-white/10 rounded px-2 py-1 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+          className="w-1/2 bg-zinc-800 border border-white/10 rounded px-2 py-1 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
           value={newValue}
           onChange={(e) => setNewValue(e.target.value)}
         />
@@ -71,8 +69,8 @@ export const SettingsList: React.FC<SettingsListProps> = ({
               className="flex justify-between items-center bg-zinc-800/50 p-2 rounded border border-white/5 group"
             >
               <div className="flex flex-col overflow-hidden">
-                <span className={`text-xs font-mono text-zinc-300 ${type === "commands" ? "uppercase" : ""}`}>{k}</span>
-                <span className="text-[10px] text-zinc-500 truncate">{v}</span>
+                <span className="text-xs font-mono text-zinc-300 capitalize">{k}</span>
+                <span className="text-[10px] text-zinc-500 truncate">{  v}</span>
               </div>
               <button
                 onClick={() => deleteItem(k)}
@@ -84,7 +82,7 @@ export const SettingsList: React.FC<SettingsListProps> = ({
           ))}
         {(!items || Object.keys(items).length === 0) && (
           <div className="text-center text-zinc-600 text-xs mt-4">
-            No {type} added yet.
+            No snippets added yet.
           </div>
         )}
       </div>

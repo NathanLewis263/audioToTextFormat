@@ -5,7 +5,7 @@ import { SettingsStatus } from "./SettingsStatus";
 import { SettingsList } from "./SettingsList";
 
 const SettingsTray = () => {
-  const { recording, hotkey, commands, snippets, statusPort } = useStatus();
+  const { recording, hotkey, snippets, statusPort } = useStatus();
 
   return (
     <div className="w-full h-full bg-zinc-900/90 backdrop-blur-md text-zinc-100 flex flex-col select-none border border-white/10 p-4">
@@ -27,18 +27,12 @@ const SettingsTray = () => {
         defaultValue="status"
         className="flex-1 flex flex-col overflow-hidden"
       >
-        <TabsList className="grid w-full grid-cols-3 bg-zinc-800/50">
+        <TabsList className="grid w-full grid-cols-2 bg-zinc-800/50">
           <TabsTrigger
             value="status"
             className="text-xs text-zinc-200/80 hover:text-zinc-200 data-[state=active]:bg-zinc-700 data-[state=active]:text-zinc-100"
           >
             Status
-          </TabsTrigger>
-          <TabsTrigger
-            value="commands"
-            className="text-xs text-zinc-200/80 hover:text-zinc-200 data-[state=active]:bg-zinc-700 data-[state=active]:text-zinc-100"
-          >
-            Commands
           </TabsTrigger>
           <TabsTrigger
             value="snippets"
@@ -50,21 +44,11 @@ const SettingsTray = () => {
 
         <TabsContent value="status" className="flex-1 mt-4">
           <SettingsStatus
-            recording={recording}
             hotkey={hotkey}
-            statusPort={statusPort}
-          />
-        </TabsContent>
-        <TabsContent value="commands" className="flex-1 overflow-hidden mt-0">
-          <SettingsList
-            type="commands"
-            items={commands}
-            statusPort={statusPort}
           />
         </TabsContent>
         <TabsContent value="snippets" className="flex-1 overflow-hidden mt-0">
           <SettingsList
-            type="snippets"
             items={snippets}
             statusPort={statusPort}
           />

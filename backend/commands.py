@@ -7,8 +7,6 @@ from pathlib import Path
 DATA_FILE = Path("user_data.json")
 
 DEFAULT_DATA = {
-    "commands": {
-    },
     "snippets": {
     }
 }
@@ -37,28 +35,15 @@ class CommandManager:
         except Exception as e:
             self.logger.error(f"Failed to save data: {e}")
 
-    def get_commands(self):
-        return self.data.get("commands", {})
-
     def get_snippets(self):
         return self.data.get("snippets", {})
-
-    def add_command(self, key, value):
-        self.data.setdefault("commands", {})[key] = value
-        self._save_data(self.data)
-
-    def remove_command(self, key):
-        if key in self.data.get("commands", {}):
-            del self.data["commands"][key]
-            self._save_data(self.data)
 
     def add_snippet(self, key, value):
         self.data.setdefault("snippets", {})[key] = value
         self._save_data(self.data)
 
     def remove_snippet(self, key):
-        if key in self.data.get("snippets", {}):
-            del self.data["snippets"][key]
-            self._save_data(self.data)
+        del self.data["snippets"][key]
+        self._save_data(self.data)
 
 command_manager = CommandManager()

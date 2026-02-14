@@ -16,6 +16,7 @@ import {
 import {
   handleCommandMode,
   pasteTextWithRestore,
+  setPreferredAI,
 } from "./main/commands";
 import { callBackend, API_URL } from "./main/api";
 
@@ -176,18 +177,32 @@ ipcMain.on("quit-app", () => {
   app.quit();
 });
 
-ipcMain.on("toggle-overlay", () => {
-  const windows = BrowserWindow.getAllWindows();
+function getOverlayVisible(): boolean {
+  const overlayWindows = BrowserWindow.getAllWindows().filter(
+    (w) => w !== trayWindow,
+  );
+  return overlayWindows.some((w) => w.isVisible());
+}
 
-  // Find overlay windows (not tray window)
-  const overlayWindows = windows.filter((w) => w !== trayWindow);
+ipcMain.handle("get-overlay-visible", () => getOverlayVisible());
+
+ipcMain.handle("toggle-overlay", () => {
+  const overlayWindows = BrowserWindow.getAllWindows().filter(
+    (w) => w !== trayWindow,
+  );
   const anyVisible = overlayWindows.some((w) => w.isVisible());
 
   if (anyVisible) {
     overlayWindows.forEach((w) => w.hide());
+    return false;
   } else {
     overlayWindows.forEach((w) => w.show());
+    return true;
   }
+});
+
+ipcMain.on("set-preferred-ai", (_event, ai: string) => {
+  setPreferredAI(ai);
 });
 
 app.on("window-all-closed", () => {

@@ -46,6 +46,14 @@ async function getSelectedTextWithRestore(): Promise<string> {
   }
 }
 
+let preferredAI = "perplexity";
+
+export const setPreferredAI = (ai: string) => {
+  preferredAI = ai;
+};
+
+export const getPreferredAI = () => preferredAI;
+
 export async function handleCommandMode(userQuery: string) {
   try {
     // Pure Clipboard Approach (more reliable than node-get-selected-text in some apps)
@@ -62,14 +70,14 @@ export async function handleCommandMode(userQuery: string) {
       // Use clipboard for the query so user can paste it if they want
       clipboard.writeText(userQuery);
 
-      // TODO: Add setting for preferred AI
-      const preferredAI = "perplexity";
       let url = "";
 
       if (preferredAI === "perplexity") {
         url = `https://www.perplexity.ai/search?q=${encodeURIComponent(userQuery)}`;
       } else if (preferredAI === "chatgpt") {
         url = `https://chatgpt.com/?q=${encodeURIComponent(userQuery)}`;
+      } else if (preferredAI === "grok") {
+        url = `https://x.com/i/grok?text=${encodeURIComponent(userQuery)}`;
       }
 
       if (url) {
