@@ -26,7 +26,7 @@
    The red border that shows when recording
 */
 .border-edge {
-  @apply fixed z-[9999] pointer-events-none transition-colors duration-300 ease-in-out bg-transparent;
+  @apply fixed z-9999 pointer-events-none transition-colors duration-300 ease-in-out bg-transparent;
 }
 
 .border-edge.recording {
