@@ -1,5 +1,6 @@
 import { clipboard, shell } from "electron";
 import { keyboard, Key } from "@nut-tree-fork/nut-js";
+import { callBackend } from "./api";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -34,7 +35,7 @@ async function getSelectedTextWithRestore(): Promise<string> {
     return selectedText;
   } catch (e) {
     console.error("Clipboard selection failed:", e);
-    
+
     // Attempt restore even on error
     if (!originalClipboardImage.isEmpty()) {
       clipboard.writeImage(originalClipboardImage);
@@ -45,13 +46,6 @@ async function getSelectedTextWithRestore(): Promise<string> {
   }
 }
 
-// TODO: implement modifySelectedText to send to LLM and paste back
-async function modifySelectedText(text: string, userQuery: string) {
-  console.log("Modify Selected Text: Stub called");
-  console.log("Selected Text:", text);
-  console.log("User Query:", userQuery);
-}
-
 export async function handleCommandMode(userQuery: string) {
   try {
     // Pure Clipboard Approach (more reliable than node-get-selected-text in some apps)
@@ -59,7 +53,10 @@ export async function handleCommandMode(userQuery: string) {
 
     if (selectedText && selectedText.trim().length > 0) {
       console.log("Editor Mode Activated");
-      await modifySelectedText(selectedText, userQuery);
+      await callBackend("/action/editor_command", "POST", {
+        instruction: userQuery,
+        selected_text: selectedText,
+      });
     } else {
       console.log("Browser Mode Activated");
       // Use clipboard for the query so user can paste it if they want
@@ -84,7 +81,11 @@ export async function handleCommandMode(userQuery: string) {
   }
 }
 
-export const pasteText = async (text: string) => {
+export const pasteTextWithRestore = async (text: string) => {
+  const originalClipboardText = clipboard.readText();
+  const originalClipboardImage = clipboard.readImage();
+
+  clipboard.clear();
   clipboard.writeText(text);
   try {
     if (process.platform === "darwin") {
@@ -95,6 +96,16 @@ export const pasteText = async (text: string) => {
       await keyboard.releaseKey(Key.LeftControl, Key.V);
     }
     console.log("Pasted via nut.js");
+
+    // Small delay to ensure paste operation completes before restoring clipboard
+    await delay(100);
+
+    // Restore original clipboard
+    if (!originalClipboardImage.isEmpty()) {
+      clipboard.writeImage(originalClipboardImage);
+    } else {
+      clipboard.writeText(originalClipboardText);
+    }
   } catch (e) {
     console.error("Failed to simulate paste:", e);
   }

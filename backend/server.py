@@ -19,6 +19,10 @@ class Item(BaseModel):
     key: str
     value: str
 
+class EditorCommand(BaseModel):
+    instruction: str
+    selected_text: str
+
 def run_status_server(engine_ref):
     """
     Runs a lightweight FastAPI server.
@@ -105,34 +109,15 @@ def run_status_server(engine_ref):
         """Returns the oldest generated text and removes it from queue."""
         with engine_ref.lock:
             if engine_ref.generated_text:
-                text = engine_ref.generated_text.pop(0)
-                return {"text": text}
+                item = engine_ref.generated_text.pop(0)
+                return item
             return {"text": None}
 
-    @app.post("/action/trigger/{key}")
-    def action_trigger(key: str):
-        """Trigger a command by key."""
-        # This logic is moved from main.py
-        current_cmds = command_manager.get_commands()
-        if key in current_cmds:
-            cmd_value = current_cmds[key]
-            
-            # Stop recording if active
-            audio_data = None
-            if engine_ref.is_recording:
-                audio_data = engine_ref.stop_recording()
-            
-            # Execute Command
-            if isinstance(cmd_value, str) and cmd_value.startswith('http'):
-                import webbrowser
-                webbrowser.open(cmd_value)
-            
-            # Process audio if captured
-            if audio_data is not None:
-                threading.Thread(target=engine_ref.process_audio, args=(audio_data, 2.0)).start()
-                
-            return {"status": "executed", "command": key}
-        return {"status": "not_found"}
+    @app.post("/action/editor_command")
+    def action_editor_command(item: EditorCommand):
+        with engine_ref.lock:
+            threading.Thread(target=lambda: engine_ref.process_editor_command(item.selected_text, item.instruction)).start()
+            return {"status": "executed", "instruction": item.instruction}
     
     uvicorn.run(app, host="127.0.0.1", port=STATUS_SERVER_PORT, log_level="warning")
 

@@ -1,18 +1,22 @@
+import axios from "axios";
+
 export const API_URL = "http://127.0.0.1:3847";
 
 // Helper to call backend
 export const callBackend = async (
   endpoint: string,
   method: "POST" | "GET" = "POST",
+  data?: any,
 ) => {
   try {
-    const res = await fetch(`${API_URL}${endpoint}`, { method });
-    // Attempt to parse JSON if possible, but don't crash if empty
-    try {
-      const json = await res.json();
-      // console.log(`[main.ts] Response from ${endpoint}:`, json);
-    } catch (e) {}
+    const res = await axios({
+      method,
+      url: `${API_URL}${endpoint}`,
+      data,
+    });
+    return res.data;
   } catch (e) {
     console.error(`[api.ts] Failed to call ${endpoint}:`, e);
+    return null;
   }
 };

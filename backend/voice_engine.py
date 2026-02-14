@@ -167,8 +167,6 @@ class VoiceEngine:
             if not self.client:
                 self.logger.error("No API Client available.")
                 return
-
-            start_time = time.time()
             
             # --- 0. Silence Detection (VAD) ---
             if not self._contains_speech(audio_data):
@@ -194,11 +192,14 @@ class VoiceEngine:
                 return
 
             # --- 3. Refine/Format using LLM ---
+            system_prompt = self.get_system_prompt()
+            system_prompt += f"\n\n### Context\nSnippets: {command_manager.get_snippets()}"
+
             completion = self.client.chat.completions.create(
                 model="openai/gpt-oss-120b",
                 messages=[
-                    {"role": "system", "content": self.get_system_prompt()},
-                    {"role": "user", "content": f"Snippets: {command_manager.get_snippets()}, Transcription: {raw_text}"}
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": raw_text}
                 ],
                 temperature=0.0
             )
@@ -207,12 +208,44 @@ class VoiceEngine:
 
             # Store for frontend to consume
             with self.lock:
-                self.generated_text.append(final_text)
+                self.generated_text.append({"text": final_text, "type": "dictation"})
 
-            # --- 4. Wait if needed (e.g., for browser to open) ---
-            elapsed = time.time() - start_time
-            if elapsed < min_delay:
-                time.sleep(min_delay - elapsed)
+        except Exception as e:
+            self.logger.error(f"Processing error: {e}")
+        finally:
+            self.is_processing = False
+
+    def process_editor_command(self, selected_text: str, instruction: str):
+        """
+        Processes a text-based command on selected text.
+        """
+        self.is_processing = True
+        try:
+            if not self.client:
+                self.logger.error("No API Client available.")
+                return
+            
+            if not instruction or not selected_text:
+                return
+
+            # --- Refine/Format using LLM ---
+            system_prompt = self.get_system_prompt()
+            system_prompt += f"\n\n### Context\nSelected Text: {selected_text}\nSnippets: {command_manager.get_snippets()}"
+
+            completion = self.client.chat.completions.create(
+                model="openai/gpt-oss-120b",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": instruction}
+                ],
+                temperature=0.0
+            )
+            final_text = completion.choices[0].message.content.strip()
+            self.logger.info(f"Editor Mode Selected Text: {selected_text}")
+            self.logger.info(f"Final: {final_text}")
+
+            with self.lock:
+                self.generated_text.append({"text": final_text, "type": "paste"})
 
         except Exception as e:
             self.logger.error(f"Processing error: {e}")

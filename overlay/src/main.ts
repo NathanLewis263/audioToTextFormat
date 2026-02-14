@@ -8,8 +8,15 @@ import {
   nativeImage,
 } from "electron";
 import * as path from "path";
-import { setupHotkeys, setRecordingState, setHandsFreeState } from "./main/hotkeys";
-import { handleCommandMode, pasteText } from "./main/commands";
+import {
+  setupHotkeys,
+  setRecordingState,
+  setHandsFreeState,
+} from "./main/hotkeys";
+import {
+  handleCommandMode,
+  pasteTextWithRestore,
+} from "./main/commands";
 import { callBackend, API_URL } from "./main/api";
 
 function createOverlayWindow(): BrowserWindow {
@@ -232,18 +239,21 @@ setInterval(async () => {
     const res = await fetch(`${API_URL}/consume_text`);
     const json = await res.json();
     if (json.text) {
-      console.log("[main.ts] Received text to paste:", json.text);
+      console.log("[main.ts] Received:", json);
 
-      const shouldHandleAsCommand = isCommandMode || isQuickCommand;
-
-      if (shouldHandleAsCommand) {
-        // Reset transient state, but keep persistent isCommandMode
-        isQuickCommand = false;
-
-        handleCommandMode(json.text);
+      if (json.type === "paste") {
+        pasteTextWithRestore(json.text);
       } else {
-        pasteText(json.text);
+        const shouldHandleAsCommand = isCommandMode || isQuickCommand;
+
+        if (shouldHandleAsCommand) {
+          // Reset transient state, but keep persistent isCommandMode
+          isQuickCommand = false;
+          handleCommandMode(json.text);
+        } else {
+          pasteTextWithRestore(json.text);
+        }
       }
     }
-  } catch (e) {} 
+  } catch (e) {}
 }, 500);
