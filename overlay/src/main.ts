@@ -8,6 +8,7 @@ import {
   nativeImage,
 } from "electron";
 import * as path from "path";
+import WebSocket, { MessageEvent, ErrorEvent } from "ws";
 import {
   setupHotkeys,
   setRecordingState,
@@ -17,8 +18,8 @@ import {
   handleCommandMode,
   pasteTextWithRestore,
   setPreferredAI,
+  setSendAction,
 } from "./main/commands";
-import { callBackend, API_URL } from "./main/api";
 
 function createOverlayWindow(): BrowserWindow {
   const primary = screen.getPrimaryDisplay();
@@ -220,16 +221,16 @@ setupHotkeys({
   onStartRecording: () => {
     isRecording = true;
     setRecordingState(isRecording);
-    callBackend("/action/start");
+    sendAction({ action: "start" });
   },
   onStopRecording: () => {
     isRecording = false;
-    callBackend("/action/stop");
+    sendAction({ action: "stop" });
   },
   onToggleRecording: () => {
     isRecording = !isRecording;
     setRecordingState(isRecording);
-    callBackend("/action/toggle");
+    sendAction({ action: "toggle" });
   },
   onToggleHandsFree: () => {
     isHandsFree = !isHandsFree;
@@ -246,29 +247,74 @@ setupHotkeys({
   },
 });
 
-// Poll for text to paste
-setInterval(async () => {
-  if (isRecording) return;
+// WebSocket Implementation
+const STATUS_PORT = 3847;
+const WS_URL = `ws://127.0.0.1:${STATUS_PORT}/ws`;
+let ws: WebSocket | null = null;
+let reconnectTimeout: NodeJS.Timeout | null = null;
 
-  try {
-    const res = await fetch(`${API_URL}/consume_text`);
-    const json = await res.json();
-    if (json.text) {
-      console.log("[main.ts] Received:", json);
+function sendAction(message: Record<string, string>) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(message));
+  } else {
+    console.warn(
+      "[main.ts] WebSocket not connected, cannot send action:",
+      message,
+    );
+  }
+}
 
-      if (json.type === "paste") {
-        pasteTextWithRestore(json.text);
-      } else {
-        const shouldHandleAsCommand = isCommandMode || isQuickCommand;
+setSendAction(sendAction);
 
-        if (shouldHandleAsCommand) {
-          // Reset transient state, but keep persistent isCommandMode
-          isQuickCommand = false;
-          handleCommandMode(json.text);
+function connectWebSocket() {
+  if (
+    ws &&
+    (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)
+  )
+    return;
+
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    console.log("[main.ts] Connected to WebSocket");
+    if (reconnectTimeout) clearTimeout(reconnectTimeout);
+  };
+
+  ws.onmessage = (event: MessageEvent) => {
+    try {
+      const message = JSON.parse(event.data.toString());
+      if (message.type === "text_generated") {
+        const { text, type } = message.data;
+        console.log("[main.ts] Received text:", text, type);
+
+        if (type === "paste") {
+          pasteTextWithRestore(text);
         } else {
-          pasteTextWithRestore(json.text);
+          const shouldHandleAsCommand = isCommandMode || isQuickCommand;
+          if (shouldHandleAsCommand) {
+            isQuickCommand = false;
+            handleCommandMode(text);
+          } else {
+            pasteTextWithRestore(text);
+          }
         }
       }
+    } catch (e) {
+      console.error("[main.ts] Error parsing WebSocket message:", e);
     }
-  } catch (e) {}
-}, 500);
+  };
+
+  ws.onclose = () => {
+    console.log("[main.ts] WebSocket closed. Reconnecting in 1s...");
+    ws = null;
+    reconnectTimeout = setTimeout(connectWebSocket, 1000);
+  };
+
+  ws.onerror = (err: ErrorEvent) => {
+    console.error("[main.ts] WebSocket error:", err);
+    ws?.close();
+  };
+}
+
+// Start WebSocket connection
+connectWebSocket();

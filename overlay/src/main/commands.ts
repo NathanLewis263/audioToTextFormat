@@ -1,6 +1,13 @@
 import { clipboard, shell } from "electron";
 import { keyboard, Key } from "@nut-tree-fork/nut-js";
-import { callBackend } from "./api";
+
+let _sendAction: ((message: Record<string, string>) => void) | null = null;
+
+export const setSendAction = (
+  fn: (message: Record<string, string>) => void,
+) => {
+  _sendAction = fn;
+};
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -61,7 +68,8 @@ export async function handleCommandMode(userQuery: string) {
 
     if (selectedText && selectedText.trim().length > 0) {
       console.log("Editor Mode Activated");
-      await callBackend("/action/editor_command", "POST", {
+      _sendAction?.({
+        action: "editor_command",
         instruction: userQuery,
         selected_text: selectedText,
       });

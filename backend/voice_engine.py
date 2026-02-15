@@ -26,8 +26,8 @@ class VoiceEngine:
     """
     Manages the audio pipeline:
     1. Record Audio (sounddevice)
-    2. Transcribe (Groq Whisper)
-    3. Refine (Llama 3 / GPT OSS)
+    2. Transcribe (openai/whisper-large-v3-turbo)
+    3. Refine (openai/gpt-oss-120b)
     4. Paste (pyperclip + keyboard simulation)
     """
     def __init__(self):
@@ -49,7 +49,23 @@ class VoiceEngine:
         self.is_recording = False
         self.is_processing = False
         self.audio_data = []
-        self.generated_text = [] # Queue for frontend to consume
+        # Callbacks
+        self.on_status_change = None
+        self.on_text_generated = None
+
+    def _notify_status(self):
+        """Helper to trigger status callback"""
+        if self.on_status_change:
+            status = {
+                "recording": self.is_recording,
+                "processing": self.is_processing,
+                "hotkey": "Ctrl Left", # TODO: Make dynamic
+                "snippets": command_manager.get_snippets()
+            }
+            try:
+                self.on_status_change(status)
+            except Exception as e:
+                self.logger.error(f"Error in status callback: {e}")
 
     def get_system_prompt(self):
         """Loads the AI persona/instructions from templates/system.md"""
@@ -88,6 +104,7 @@ class VoiceEngine:
                 )
                 self.stream.start()
                 self.logger.info("Audio stream started successfully")
+                self._notify_status()
             except Exception as e:
                 self.logger.error(f"Failed to start audio stream: {e}")
                 self.is_recording = False
@@ -108,6 +125,7 @@ class VoiceEngine:
                 
             self.logger.info("*** STOPPING RECORDING ***")
             self.is_recording = False
+            self._notify_status()
             try:
                 if hasattr(self, 'stream'):
                     self.stream.stop()
@@ -163,6 +181,7 @@ class VoiceEngine:
             return
 
         self.is_processing = True
+        self._notify_status()
         try:
             if not self.client:
                 self.logger.error("No API Client available.")
@@ -184,6 +203,7 @@ class VoiceEngine:
                 model="whisper-large-v3-turbo",
                 response_format="text",
                 language="en"
+                
             )
             raw_text = str(transcription).strip()
             self.logger.info(f"Raw: {raw_text}")
@@ -206,20 +226,22 @@ class VoiceEngine:
             final_text = completion.choices[0].message.content.strip()
             self.logger.info(f"Final: {final_text}")
 
-            # Store for frontend to consume
-            with self.lock:
-                self.generated_text.append({"text": final_text, "type": "dictation"})
+            # Notify listeners
+            if self.on_text_generated:
+                self.on_text_generated({"text": final_text, "type": "dictation"})
 
         except Exception as e:
             self.logger.error(f"Processing error: {e}")
         finally:
             self.is_processing = False
+            self._notify_status()
 
     def process_editor_command(self, selected_text: str, instruction: str):
         """
         Processes a text-based command on selected text.
         """
         self.is_processing = True
+        self._notify_status()
         try:
             if not self.client:
                 self.logger.error("No API Client available.")
@@ -244,10 +266,12 @@ class VoiceEngine:
             self.logger.info(f"Editor Mode Selected Text: {selected_text}")
             self.logger.info(f"Final: {final_text}")
 
-            with self.lock:
-                self.generated_text.append({"text": final_text, "type": "paste"})
+            # Notify listeners
+            if self.on_text_generated:
+                self.on_text_generated({"text": final_text, "type": "paste"})
 
         except Exception as e:
             self.logger.error(f"Processing error: {e}")
         finally:
             self.is_processing = False
+            self._notify_status()
