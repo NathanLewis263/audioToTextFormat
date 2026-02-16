@@ -60,8 +60,8 @@ Voice → Microphone → Groq Whisper (transcription) → GPT OSS 120B (refineme
 
 ```bash
 # Clone
-git clone https://github.com/nathanlewis1/audioToTextFormat.git
-cd audioToTextFormat
+git clone https://github.com/nathanlewis1/Stream.git
+cd Stream
 
 # Backend
 pip install -r backend/requirements.txt
